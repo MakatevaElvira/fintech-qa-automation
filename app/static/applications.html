@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Заявки — Demo Lending Back-office</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 24px; color: #1f2933; }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 12px; }
+  .filter { position: relative; }
+  .filter > button { padding: 6px 12px; border: 1px solid #cbd2d9; background: #fff; border-radius: 6px; cursor: pointer; }
+  .filter > button.active { border-color: #2563eb; color: #2563eb; }
+  .panel { position: absolute; top: 36px; left: 0; z-index: 5; background: #fff; border: 1px solid #cbd2d9;
+           border-radius: 8px; padding: 10px; min-width: 200px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+  .panel label { display: block; margin: 4px 0; }
+  .panel .actions { display: flex; gap: 6px; margin-top: 8px; }
+  .hidden { display: none; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border-bottom: 1px solid #e4e7eb; padding: 6px 8px; text-align: left; font-size: 14px; }
+  #loader { margin: 8px 0; color: #616e7c; }
+  .checks { background: #f5f7fa; padding: 8px; }
+  input[type=number] { width: 110px; }
+</style>
+</head>
+<body>
+<h1>Заявки на кредит</h1>
+
+<div class="filters">
+  <div class="filter" data-test="filter-product" data-kind="multi" data-param="product" data-title="Продукт">
+    <button type="button" data-test="filter-toggle">Продукт</button>
+    <div class="panel hidden" data-test="filter-panel">
+      <label><input type="checkbox" value="PDL" data-test="option-PDL"> PDL</label>
+      <label><input type="checkbox" value="Installment" data-test="option-Installment"> Installment</label>
+      <label><input type="checkbox" value="Credit line" data-test="option-Credit line"> Credit line</label>
+      <div class="actions">
+        <button type="button" data-test="select-all">Выбрать всё</button>
+        <button type="button" data-test="clear">Очистить</button>
+        <button type="button" data-test="apply">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="filter" data-test="filter-status" data-kind="multi" data-param="status" data-title="Статус">
+    <button type="button" data-test="filter-toggle">Статус</button>
+    <div class="panel hidden" data-test="filter-panel">
+      <label><input type="checkbox" value="approved" data-test="option-approved"> Одобрена</label>
+      <label><input type="checkbox" value="rejected" data-test="option-rejected"> Отказ</label>
+      <label><input type="checkbox" value="pending" data-test="option-pending"> На рассмотрении</label>
+      <div class="actions">
+        <button type="button" data-test="select-all">Выбрать всё</button>
+        <button type="button" data-test="clear">Очистить</button>
+        <button type="button" data-test="apply">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="filter" data-test="filter-risk" data-kind="single" data-param="risk_flags" data-title="Риск-флаги">
+    <button type="button" data-test="filter-toggle">Риск-флаги</button>
+    <div class="panel hidden" data-test="filter-panel">
+      <label><input type="radio" name="risk" value="" data-test="option-all" checked> Все</label>
+      <label><input type="radio" name="risk" value="with" data-test="option-with"> С флагами</label>
+      <label><input type="radio" name="risk" value="without" data-test="option-without"> Без флагов</label>
+      <div class="actions">
+        <button type="button" data-test="clear">Очистить</button>
+        <button type="button" data-test="apply">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="filter" data-test="filter-amount" data-kind="range" data-param="amount" data-title="Сумма">
+    <button type="button" data-test="filter-toggle">Сумма</button>
+    <div class="panel hidden" data-test="filter-panel">
+      <label>от <input type="number" min="0" data-test="amount-min"></label>
+      <label>до <input type="number" min="0" data-test="amount-max"></label>
+      <div class="actions">
+        <button type="button" data-test="clear">Очистить</button>
+        <button type="button" data-test="apply">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <button type="button" data-test="reset-all">Сбросить все фильтры</button>
+</div>
+
+<div>Найдено: <span data-test="total">—</span></div>
+<div id="loader" data-test="loader" class="hidden">Загрузка…</div>
+<div data-test="empty" class="hidden">Заявки не найдены</div>
+
+<table>
+  <thead>
+    <tr><th>Клиент</th><th>Продукт</th><th>Статус</th><th>Сумма</th><th>Риск-флаги</th><th>Внешний ID</th><th></th></tr>
+  </thead>
+  <tbody data-test="applications-table"></tbody>
+</table>
+
+<script>
+const STATUS_RU = { approved: "Одобрена", rejected: "Отказ", pending: "На рассмотрении" };
+const state = new URLSearchParams(location.search);
+
+function filters() { return [...document.querySelectorAll(".filter")]; }
+
+function syncFiltersFromState() {
+  for (const f of filters()) {
+    const kind = f.dataset.kind, param = f.dataset.param;
+    if (kind === "multi") {
+      const values = (state.get(param) || "").split(",").filter(Boolean);
+      f.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = values.includes(cb.value));
+      setTitle(f, values.length ? `${f.dataset.title}: ${values.length}` : f.dataset.title);
+    } else if (kind === "single") {
+      const value = state.get(param) || "";
+      f.querySelectorAll("input[type=radio]").forEach(r => r.checked = r.value === value);
+      const label = value ? f.querySelector(`input[value="${value}"]`).parentElement.textContent.trim() : "";
+      setTitle(f, value ? `${f.dataset.title}: ${label}` : f.dataset.title);
+    } else {
+      const min = state.get("amount_min") || "", max = state.get("amount_max") || "";
+      f.querySelector("[data-test=amount-min]").value = min;
+      f.querySelector("[data-test=amount-max]").value = max;
+      setTitle(f, (min || max) ? `${f.dataset.title}: ${min || "0"}–${max || "∞"}` : f.dataset.title);
+    }
+  }
+}
+
+function setTitle(f, text) {
+  const btn = f.querySelector("[data-test=filter-toggle]");
+  btn.textContent = text;
+  btn.classList.toggle("active", text !== f.dataset.title);
+}
+
+function readFilterIntoState(f) {
+  const kind = f.dataset.kind, param = f.dataset.param;
+  if (kind === "multi") {
+    const values = [...f.querySelectorAll("input:checked")].map(cb => cb.value);
+    values.length ? state.set(param, values.join(",")) : state.delete(param);
+  } else if (kind === "single") {
+    const value = f.querySelector("input:checked")?.value || "";
+    value ? state.set(param, value) : state.delete(param);
+  } else {
+    for (const [name, sel] of [["amount_min", "amount-min"], ["amount_max", "amount-max"]]) {
+      const v = f.querySelector(`[data-test=${sel}]`).value;
+      v ? state.set(name, v) : state.delete(name);
+    }
+  }
+}
+
+function clearFilterUi(f) {
+  f.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
+  f.querySelectorAll("input[type=radio]").forEach(r => r.checked = r.value === "");
+  f.querySelectorAll("input[type=number]").forEach(i => i.value = "");
+}
+
+async function loadTable() {
+  history.replaceState(null, "", state.toString() ? `?${state}` : location.pathname);
+  const loader = document.querySelector("[data-test=loader]");
+  const tbody = document.querySelector("[data-test=applications-table]");
+  loader.classList.remove("hidden");
+  const resp = await fetch(`/api/applications?${state}`);
+  const data = await resp.json();
+  loader.classList.add("hidden");
+  tbody.innerHTML = "";
+  if (!resp.ok) { document.querySelector("[data-test=total]").textContent = "ошибка"; return; }
+  document.querySelector("[data-test=total]").textContent = data.total;
+  document.querySelector("[data-test=empty]").classList.toggle("hidden", data.items.length > 0);
+  for (const item of data.items) {
+    const tr = document.createElement("tr");
+    tr.dataset.test = "application-row";
+    tr.dataset.uuid = item.uuid;
+    tr.innerHTML = `
+      <td data-test="cell-client"></td><td data-test="cell-product"></td><td data-test="cell-status"></td>
+      <td data-test="cell-amount"></td><td data-test="cell-risk"></td><td data-test="cell-external"></td>
+      <td><button type="button" data-test="expand-checks">Проверки</button></td>`;
+    tr.querySelector("[data-test=cell-client]").textContent = item.client_name;
+    tr.querySelector("[data-test=cell-product]").textContent = item.product;
+    tr.querySelector("[data-test=cell-status]").textContent = STATUS_RU[item.status];
+    tr.querySelector("[data-test=cell-amount]").textContent = item.amount.toLocaleString("ru-RU");
+    tr.querySelector("[data-test=cell-risk]").textContent = item.risk_flags;
+    tr.querySelector("[data-test=cell-external]").textContent = item.external_id || "";
+    tr.querySelector("[data-test=expand-checks]").addEventListener("click", () => toggleChecks(tr, item));
+    tbody.appendChild(tr);
+  }
+}
+
+function toggleChecks(tr, item) {
+  const next = tr.nextElementSibling;
+  if (next && next.dataset.test === "checks-row") { next.remove(); return; }
+  const row = document.createElement("tr");
+  row.dataset.test = "checks-row";
+  row.innerHTML = `<td colspan="7"><div class="checks" data-test="checks-block" data-state="loading">Загрузка проверок…</div></td>`;
+  tr.after(row);
+  // AI scoring block is computed asynchronously on a real backend
+  setTimeout(() => {
+    const block = row.querySelector("[data-test=checks-block]");
+    block.innerHTML = item.checks.map(c => `
+      <div data-test="check-row" data-uuid="${c.uuid}">
+        <span data-test="check-type">${c.check_type}</span> ·
+        <span data-test="check-product">${c.product}</span> ·
+        <span data-test="check-risk">${c.risk_flag ? "флаг" : "—"}</span>
+        ${c.ai_verdict ? `· AI: <span data-test="check-ai-verdict">${c.ai_verdict}</span>` : ""}
+      </div>`).join("");
+    block.dataset.state = "ready";
+  }, 400);
+}
+
+for (const f of filters()) {
+  f.querySelector("[data-test=filter-toggle]").addEventListener("click", () => {
+    filters().filter(o => o !== f).forEach(o => o.querySelector(".panel").classList.add("hidden"));
+    f.querySelector(".panel").classList.toggle("hidden");
+  });
+  f.querySelector("[data-test=select-all]")?.addEventListener("click", () =>
+    f.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = true));
+  f.querySelector("[data-test=clear]").addEventListener("click", () => {
+    clearFilterUi(f); readFilterIntoState(f); syncFiltersFromState();
+    f.querySelector(".panel").classList.add("hidden"); loadTable();
+  });
+  f.querySelector("[data-test=apply]").addEventListener("click", () => {
+    readFilterIntoState(f); syncFiltersFromState();
+    f.querySelector(".panel").classList.add("hidden"); loadTable();
+  });
+}
+document.querySelector("[data-test=reset-all]").addEventListener("click", () => {
+  for (const key of [...state.keys()]) state.delete(key);
+  syncFiltersFromState(); loadTable();
+});
+
+syncFiltersFromState();
+loadTable();
+</script>
+</body>
+</html>
