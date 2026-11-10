@@ -1,0 +1,33 @@
+{
+  "common": {
+    "base_url": "http://127.0.0.1:{port}",
+    "timeout_sec": 10
+  },
+  "auth": {
+    "username": "qa-bot",
+    "password_env": "LENDING_PASSWORD",
+    "password_default": "demo-password"
+  },
+  "ui": {
+    "test_filter_by_product": {
+      "pdl_only": {"products": ["PDL"]},
+      "pdl_and_credit_line": {"products": ["PDL", "Credit line"]}
+    },
+    "test_filter_by_status": {
+      "approved": {"statuses": ["approved"], "label": "Одобрена"},
+      "rejected_and_pending": {"statuses": ["rejected", "pending"], "label": null}
+    },
+    "test_filter_by_amount": {
+      "middle_range": {"amount_min": 100000, "amount_max": 250000}
+    }
+  },
+  "api": {
+    "test_applications_list": {
+      "positive": {"params": {}, "expected_status": 200},
+      "filter_by_status": {"params": {"status": "approved"}, "expected_status": 200},
+      "unknown_product": {"params": {"product": "Mortgage"}, "expected_status": 422, "error_field": "product"},
+      "invalid_amount": {"params": {"amount_min": "-1"}, "expected_status": 422, "error_field": "amount_min"},
+      "invalid_page": {"params": {"page": "0"}, "expected_status": 422, "error_field": "page"}
+    }
+  }
+}
