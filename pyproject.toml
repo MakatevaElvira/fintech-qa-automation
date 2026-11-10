@@ -1,0 +1,28 @@
+[project]
+name = "fintech-qa-automation"
+version = "1.0.0"
+description = "QA automation showcase: UI + API + DB checks for a demo lending back-office"
+requires-python = ">=3.13"
+dependencies = [
+    "pytest>=8.3",
+    "pytest-xdist>=3.6",
+    "pytest-html>=4.1",
+    "playwright>=1.50",
+    "requests>=2.32",
+    "pydantic>=2.9",
+    "allure-pytest>=2.13",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.8", "pre-commit>=4.0"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "PT", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # Cyrillic text in messages and docstrings is intentional
+
+[tool.ruff.lint.per-file-ignores]
+"app/*" = ["S"]
